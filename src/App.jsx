@@ -603,7 +603,7 @@ export default function App() {
       {/* Footer */}
       <footer className="border-t border-zinc-800 py-4 mt-auto">
         <div className="max-w-6xl mx-auto px-4 flex flex-wrap items-center justify-between gap-2 text-zinc-600 text-xs">
-          <span>📺 <span className="font-bold text-zinc-500">Telecast</span> — 100% legal. Official streams only.</span>
+          <span>📺 <span className="font-bold text-zinc-500">Telecast</span> </span>
           <span>Made in 🇵🇭</span>
         </div>
       </footer>
@@ -611,8 +611,8 @@ export default function App() {
       {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
       {showSchedule && <SubmitScheduleModal channels={channels} onClose={() => setShowSchedule(false)} />}
 
-      <div className="fixed bottom-4 right-4 text-[10px] text-gray-600 font-mono">
-        Telecast v1.1
+      <div className="fixed bottom-4 left-4 text-[15px] text-gray-600 font-mono">
+        v1.1
       </div>
     </div>
   );
