@@ -610,6 +610,10 @@ export default function App() {
 
       {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
       {showSchedule && <SubmitScheduleModal channels={channels} onClose={() => setShowSchedule(false)} />}
+
+      <div className="fixed bottom-4 right-4 text-[10px] text-gray-600 font-mono">
+        Telecast v1.1
+      </div>
     </div>
   );
 }
