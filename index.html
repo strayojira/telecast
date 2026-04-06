@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Telecast • Philippine TV Guide</title>
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; margin: 0; padding: 40px 20px; background: #111; color: #fff; text-align: center; }
+    h1 { font-size: 3rem; margin-bottom: 10px; }
+    p { font-size: 1.3rem; max-width: 600px; margin: 0 auto 40px; }
+    .feedback-btn {
+      background: #e50914; /* GMA red */
+      color: white;
+      font-size: 1.5rem;
+      padding: 20px 40px;
+      border: none;
+      border-radius: 50px;
+      cursor: pointer;
+      box-shadow: 0 10px 20px rgba(229, 9, 20, 0.3);
+    }
+    .feedback-btn:hover { transform: scale(1.05); }
+  </style>
+</head>
+<body>
+  <h1>📺 Telecast</h1>
+  <p>Your community-powered Philippine TV guide.<br>Now airing thumbnails + accurate EPG coming soon!</p>
+  
+  <button onclick="document.getElementById('feedback').style.display='block'" class="feedback-btn">
+    📬 SUBMIT FEEDBACK
+  </button>
+
+  <!-- Netlify Form -->
+  <form id="feedback" style="display:none; margin-top:40px; max-width:500px; margin-left:auto; margin-right:auto;" name="tv-feedback" method="POST" data-netlify="true">
+    <input type="text" name="name" placeholder="Your name (optional - leave blank for anonymous)" style="width:100%; padding:15px; margin:10px 0; font-size:1.1rem;">
+    
+    <textarea name="message" placeholder="What should we add to the EPG? Example: The Secrets of Hotel 88 airs Mon-Fri at 9:35 PM" rows="5" style="width:100%; padding:15px; margin:10px 0; font-size:1.1rem;"></textarea>
+    
+    <button type="submit" style="background:#00b14f; color:white; padding:15px 30px; font-size:1.2rem; border:none; border-radius:50px;">Send to Telecast team</button>
+  </form>
+
+  <p style="margin-top:60px; font-size:0.9rem; opacity:0.7;">
+    Made with ❤️ for Pinoy TV viewers • telecast.netlify.app
+  </p>
+</body>
+</html>
