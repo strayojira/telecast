@@ -1,4 +1,0 @@
-git init
-git branch -M main
-git remote add origin https://github.com/YOUR-USERNAME/telecast.git   # replace with your actual repo URL
-git reset --hard HEAD~1
