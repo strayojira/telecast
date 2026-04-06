@@ -1,260 +1,334 @@
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
+import {
+  airsOnDay, formatTime, formatDuration,
+  isCurrentlyAiring, isUpcoming, DAY_NAMES,
+} from "../lib/epgUtils";
 
-const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const TODAY = new Date();
+const TODAY_INDEX = TODAY.getDay();
+const TOMORROW_INDEX = (TODAY_INDEX + 1) % 7;
 
-function parseDays(daysStr) {
-  if (!daysStr) return [];
-  const s = daysStr.trim().toLowerCase();
-  if (s === "daily" || s === "everyday") return DAY_LABELS;
-  if (s === "mon-fri" || s === "weekdays") return ["Mon", "Tue", "Wed", "Thu", "Fri"];
-  if (s === "sat-sun" || s === "weekends") return ["Sat", "Sun"];
-  return daysStr.split(",").map((d) => d.trim());
+const DAY_TABS = [0, 1, 2, 3, 4, 5, 6].map((offset) => {
+  const d = new Date(TODAY);
+  d.setDate(TODAY.getDate() + offset);
+  return {
+    label: offset === 0 ? "Today" : offset === 1 ? "Tomorrow" : DAY_NAMES[d.getDay()],
+    dayIndex: d.getDay(),
+    date: d,
+  };
+});
+
+// ─── Submit Schedule Modal ────────────────────────────────────────
+
+export function SubmitScheduleModal({ channels, onClose }) {
+  const [form, setForm] = useState({
+    channel_id: "",
+    show_name: "",
+    days_of_week: "Daily",
+    start_time: "",
+    duration_minutes: 60,
+    notes: "",
+  });
+  const [status, setStatus] = useState("idle"); // idle | loading | success | error
+
+  function set(key, val) {
+    setForm((f) => ({ ...f, [key]: val }));
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!form.channel_id || !form.show_name || !form.start_time) return;
+    setStatus("loading");
+
+    const { error } = await supabase.from("epg_entries").insert({
+      ...form,
+      duration_minutes: Number(form.duration_minutes),
+      source: "user",
+    });
+
+    if (error) {
+      console.error(error);
+      setStatus("error");
+    } else {
+      setStatus("success");
+    }
+  }
+
+  const inputCls = "w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2.5 text-white text-sm placeholder-zinc-600 focus:outline-none focus:border-red-500 transition-colors";
+  const labelCls = "block text-zinc-400 text-xs font-semibold uppercase tracking-widest mb-1.5";
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 sticky top-0 bg-zinc-900 z-10">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">📅</span>
+            <h2 className="text-white font-bold text-lg tracking-tight">Submit Schedule</h2>
+          </div>
+          <button onClick={onClose}
+            className="text-zinc-500 hover:text-white transition-colors text-2xl leading-none pb-0.5"
+            aria-label="Close">×</button>
+        </div>
+
+        {status === "success" ? (
+          <div className="px-6 py-10 text-center">
+            <div className="text-4xl mb-3">✅</div>
+            <p className="text-white font-semibold text-lg">Salamat!</p>
+            <p className="text-zinc-400 text-sm mt-1">Schedule submitted. It'll appear after review.</p>
+            <button onClick={onClose}
+              className="mt-6 px-6 py-2 bg-red-600 hover:bg-red-500 text-white rounded-xl text-sm font-semibold transition-colors">
+              Close
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
+            <div>
+              <label className={labelCls}>Channel <span className="text-red-500">*</span></label>
+              <select
+                required value={form.channel_id}
+                onChange={(e) => set("channel_id", e.target.value)}
+                className={inputCls}
+              >
+                <option value="">Select a channel...</option>
+                {channels.map((ch) => (
+                  <option key={ch.id} value={ch.id}>{ch.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className={labelCls}>Show Name <span className="text-red-500">*</span></label>
+              <input type="text" required placeholder="e.g. 24 Oras"
+                value={form.show_name} onChange={(e) => set("show_name", e.target.value)}
+                className={inputCls} />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls}>Days <span className="text-red-500">*</span></label>
+                <select value={form.days_of_week} onChange={(e) => set("days_of_week", e.target.value)}
+                  className={inputCls}>
+                  <option value="Daily">Daily</option>
+                  <option value="Mon-Fri">Mon–Fri</option>
+                  <option value="Sat-Sun">Sat–Sun</option>
+                  <option value="Mon">Monday</option>
+                  <option value="Tue">Tuesday</option>
+                  <option value="Wed">Wednesday</option>
+                  <option value="Thu">Thursday</option>
+                  <option value="Fri">Friday</option>
+                  <option value="Sat">Saturday</option>
+                  <option value="Sun">Sunday</option>
+                </select>
+              </div>
+              <div>
+                <label className={labelCls}>Start Time <span className="text-red-500">*</span></label>
+                <input type="time" required
+                  value={form.start_time} onChange={(e) => set("start_time", e.target.value)}
+                  className={inputCls} />
+              </div>
+            </div>
+
+            <div>
+              <label className={labelCls}>Duration (minutes)</label>
+              <input type="number" min={5} max={360} step={5}
+                value={form.duration_minutes} onChange={(e) => set("duration_minutes", e.target.value)}
+                className={inputCls} />
+            </div>
+
+            <div>
+              <label className={labelCls}>Notes <span className="text-zinc-600 font-normal normal-case">(optional)</span></label>
+              <textarea rows={2} placeholder="e.g. Pre-empted on holidays"
+                value={form.notes} onChange={(e) => set("notes", e.target.value)}
+                className={`${inputCls} resize-none`} />
+            </div>
+
+            {status === "error" && (
+              <p className="text-red-400 text-xs">Something went wrong. Try again.</p>
+            )}
+
+            <button type="submit" disabled={status === "loading"}
+              className="w-full bg-red-600 hover:bg-red-500 disabled:opacity-50 active:scale-[0.98] text-white font-bold py-3 rounded-xl transition-all text-sm tracking-wide">
+              {status === "loading" ? "Submitting..." : "Submit Schedule"}
+            </button>
+          </form>
+        )}
+      </div>
+    </div>
+  );
 }
 
-function todayLabel() {
-  return DAY_LABELS[new Date().getDay()];
+// ─── EPG Row ──────────────────────────────────────────────────────
+
+function EpgRow({ entry, isToday }) {
+  const airing = isToday && isCurrentlyAiring(entry.start_time, entry.duration_minutes);
+  const upcoming = isToday && !airing && isUpcoming(entry.start_time);
+
+  return (
+    <div className={`flex items-start gap-3 px-4 py-3 rounded-xl transition-colors ${
+      airing ? "bg-red-950/40 border border-red-900/50" :
+      upcoming ? "bg-zinc-800/60 border border-zinc-700/50" :
+      "border border-transparent hover:bg-zinc-800/40"
+    }`}>
+      {/* Time column */}
+      <div className="shrink-0 w-16 text-right">
+        <span className={`text-sm font-mono font-semibold ${airing ? "text-red-400" : "text-zinc-400"}`}>
+          {formatTime(entry.start_time)}
+        </span>
+      </div>
+
+      {/* Show info */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className={`font-semibold text-sm ${airing ? "text-white" : "text-zinc-200"}`}>
+            {entry.show_name}
+          </span>
+          {airing && (
+            <span className="flex items-center gap-1 bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+              <span className="w-1 h-1 bg-white rounded-full animate-pulse inline-block" />
+              ON AIR
+            </span>
+          )}
+          {upcoming && (
+            <span className="bg-zinc-700 text-zinc-300 text-[10px] font-semibold px-2 py-0.5 rounded-full">
+              UP NEXT
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2 mt-0.5 text-zinc-500 text-xs">
+          <span>{formatDuration(entry.duration_minutes)}</span>
+          {entry.notes && (
+            <>
+              <span>·</span>
+              <span className="truncate">{entry.notes}</span>
+            </>
+          )}
+          {entry.source === "user" && (
+            <>
+              <span>·</span>
+              <span className="text-zinc-600">community</span>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
-function formatTime(t) {
-  if (!t) return "—";
-  const [h, m] = t.split(":").map(Number);
-  const suffix = h >= 12 ? "PM" : "AM";
-  const hour = h % 12 || 12;
-  return `${hour}:${String(m).padStart(2, "0")} ${suffix}`;
-}
+// ─── EPG View ─────────────────────────────────────────────────────
 
-function calcEndTime(start, mins) {
-  if (!start || !mins) return null;
-  const [h, m] = start.split(":").map(Number);
-  const total = h * 60 + m + mins;
-  const eh = Math.floor(total / 60) % 24;
-  const em = total % 60;
-  return `${String(eh).padStart(2, "0")}:${String(em).padStart(2, "0")}`;
-}
-
-const SOURCE_BADGE = {
-  official: { label: "Official", cls: "bg-blue-600 text-white" },
-  watchdog: { label: "Watchdog", cls: "bg-yellow-500 text-black" },
-  user: { label: "Community", cls: "bg-gray-600 text-white" },
-};
-
-export default function EPGView() {
-  const [epg, setEpg] = useState([]);
+export default function EpgView({ channels }) {
+  const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filterDay, setFilterDay] = useState(todayLabel());
-  const [groupBy, setGroupBy] = useState("channel");
-  const [search, setSearch] = useState("");
+  const [selectedDay, setSelectedDay] = useState(0); // index into DAY_TABS
+  const [selectedChannel, setSelectedChannel] = useState("all");
 
   useEffect(() => {
     async function load() {
       setLoading(true);
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("epg_entries")
-        .select("*, channels(name)")
+        .select("*, channels(name, accent_color)")
         .order("start_time");
-      setEpg(data || []);
+
+      if (!error) setEntries(data ?? []);
       setLoading(false);
     }
     load();
   }, []);
 
-  const filtered = epg.filter((e) => {
-    const days = parseDays(e.days_of_week);
-    const dayMatch =
-      filterDay === "All" ||
-      days.some((d) => d.toLowerCase() === filterDay.toLowerCase());
-    const searchMatch =
-      !search ||
-      e.show_name.toLowerCase().includes(search.toLowerCase()) ||
-      e.channels?.name?.toLowerCase().includes(search.toLowerCase());
-    return dayMatch && searchMatch;
+  const activeDay = DAY_TABS[selectedDay];
+  const isToday = selectedDay === 0;
+
+  // Filter entries for selected day + channel
+  const filtered = entries.filter((e) => {
+    const dayMatch = airsOnDay(e.days_of_week, activeDay.dayIndex);
+    const channelMatch = selectedChannel === "all" || e.channel_id === selectedChannel;
+    const notExpired = !e.end_date || new Date(e.end_date) >= TODAY;
+    return dayMatch && channelMatch && notExpired;
   });
 
-  const byChannel = {};
-  const byTime = {};
+  // Group by channel
+  const grouped = {};
   filtered.forEach((e) => {
-    const ch = e.channels?.name || "Unknown";
-    if (!byChannel[ch]) byChannel[ch] = [];
-    byChannel[ch].push(e);
-
-    const t = e.start_time || "No Time";
-    if (!byTime[t]) byTime[t] = [];
-    byTime[t].push(e);
+    const key = e.channel_id;
+    if (!grouped[key]) grouped[key] = { channel: e.channels, entries: [] };
+    grouped[key].entries.push(e);
   });
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <div className="text-gray-400 text-sm animate-pulse">Loading schedule…</div>
-      </div>
-    );
-  }
-
-  const isEmpty = filtered.length === 0;
 
   return (
-    <div className="space-y-5">
-      {/* Controls */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <input
-          type="text"
-          placeholder="Search shows or channels…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-red-500"
-        />
-        <div className="flex gap-1 bg-gray-800 border border-gray-700 rounded-lg p-1">
-          {["channel", "time"].map((g) => (
-            <button
-              key={g}
-              onClick={() => setGroupBy(g)}
-              className={`px-3 py-1 rounded-md text-xs font-semibold capitalize transition-colors ${
-                groupBy === g
-                  ? "bg-red-600 text-white"
-                  : "text-gray-400 hover:text-white"
-              }`}
-            >
-              By {g}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Day Filter */}
-      <div className="flex gap-1.5 flex-wrap">
-        {["All", ...DAY_LABELS].map((d) => (
-          <button
-            key={d}
-            onClick={() => setFilterDay(d)}
-            className={`px-3 py-1 rounded-full text-xs font-bold border transition-all ${
-              filterDay === d
-                ? "bg-red-600 border-red-600 text-white"
-                : "border-gray-700 text-gray-400 hover:border-gray-500 hover:text-white"
-            }`}
-          >
-            {d}
+    <div className="space-y-6">
+      {/* Day tabs */}
+      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+        {DAY_TABS.map((day, i) => (
+          <button key={i} onClick={() => setSelectedDay(i)}
+            className={`shrink-0 px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${
+              selectedDay === i
+                ? "bg-red-600 text-white"
+                : "bg-zinc-800 text-zinc-400 hover:text-zinc-200"
+            }`}>
+            {day.label}
           </button>
         ))}
       </div>
 
-      {/* Empty State */}
-      {isEmpty && (
-        <div className="text-center py-16 text-gray-500">
-          <div className="text-4xl mb-3">📭</div>
-          <p className="text-sm">
-            No schedules found{filterDay !== "All" ? ` for ${filterDay}` : ""}.
-          </p>
-          <p className="text-xs mt-1 text-gray-600">
-            Be the first to submit one using the feedback form below!
-          </p>
-        </div>
-      )}
+      {/* Channel filter */}
+      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+        <button onClick={() => setSelectedChannel("all")}
+          className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+            selectedChannel === "all" ? "bg-zinc-600 text-white" : "bg-zinc-800 text-zinc-500 hover:text-zinc-300"
+          }`}>
+          All Channels
+        </button>
+        {channels.map((ch) => (
+          <button key={ch.id} onClick={() => setSelectedChannel(ch.id)}
+            className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+              selectedChannel === ch.id ? "bg-zinc-600 text-white" : "bg-zinc-800 text-zinc-500 hover:text-zinc-300"
+            }`}>
+            {ch.name}
+          </button>
+        ))}
+      </div>
 
-      {/* Grouped by Channel */}
-      {!isEmpty &&
-        groupBy === "channel" &&
-        Object.entries(byChannel)
-          .sort(([a], [b]) => a.localeCompare(b))
-          .map(([chName, entries]) => (
-            <div
-              key={chName}
-              className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden"
-            >
-              <div className="bg-gray-800 px-4 py-2.5 flex items-center gap-2">
-                <span className="text-red-500 text-xs">📺</span>
-                <span className="font-bold text-white text-sm">{chName}</span>
-                <span className="ml-auto text-gray-500 text-xs">
-                  {entries.length} show{entries.length !== 1 ? "s" : ""}
-                </span>
-              </div>
-              <div className="divide-y divide-gray-800">
-                {entries
-                  .sort((a, b) => (a.start_time || "").localeCompare(b.start_time || ""))
-                  .map((e) => (
-                    <EPGRow key={e.id} entry={e} showChannel={false} />
-                  ))}
-              </div>
-            </div>
+      {/* Content */}
+      {loading ? (
+        <div className="space-y-2">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="h-14 bg-zinc-800 rounded-xl animate-pulse" />
           ))}
-
-      {/* Grouped by Time */}
-      {!isEmpty &&
-        groupBy === "time" &&
-        Object.entries(byTime)
-          .sort(([a], [b]) => a.localeCompare(b))
-          .map(([time, entries]) => (
-            <div
-              key={time}
-              className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden"
-            >
-              <div className="bg-gray-800 px-4 py-2.5 flex items-center gap-2">
-                <span className="text-yellow-400 text-xs">🕐</span>
-                <span className="font-bold text-white text-sm">
-                  {formatTime(time)}
-                </span>
-                <span className="ml-auto text-gray-500 text-xs">
-                  {entries.length} show{entries.length !== 1 ? "s" : ""}
-                </span>
+        </div>
+      ) : Object.keys(grouped).length === 0 ? (
+        <div className="border border-dashed border-zinc-800 rounded-2xl p-10 text-center">
+          <p className="text-2xl mb-2">📭</p>
+          <p className="text-zinc-500 text-sm">No schedule entries for {activeDay.label}.</p>
+          <p className="text-zinc-600 text-xs mt-1">Be the first to submit one.</p>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {Object.values(grouped).map(({ channel, entries: rows }) => (
+            <div key={rows[0].channel_id} className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
+              {/* Channel header */}
+              <div className="px-4 py-3 border-b border-zinc-800 flex items-center gap-2">
+                <div
+                  className="w-2 h-2 rounded-full shrink-0"
+                  style={{ background: channel?.accent_color ?? "#c8000a" }}
+                />
+                <span className="text-white font-bold text-sm">{channel?.name}</span>
+                <span className="text-zinc-600 text-xs ml-auto">{rows.length} show{rows.length !== 1 ? "s" : ""}</span>
               </div>
-              <div className="divide-y divide-gray-800">
-                {entries.map((e) => (
-                  <EPGRow key={e.id} entry={e} showChannel={true} />
+              {/* Rows */}
+              <div className="divide-y divide-zinc-800/50 px-2 py-1">
+                {rows.map((entry) => (
+                  <EpgRow key={entry.id} entry={entry} isToday={isToday} />
                 ))}
               </div>
             </div>
           ))}
-
-      <p className="text-center text-xs text-gray-600 pt-2">
-        Schedule data is community-sourced. Submit corrections using the form below.
-      </p>
-    </div>
-  );
-}
-
-function EPGRow({ entry, showChannel }) {
-  const badge = SOURCE_BADGE[entry.source] || SOURCE_BADGE.user;
-  const end = calcEndTime(entry.start_time, entry.duration_minutes);
-
-  return (
-    <div className="px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 hover:bg-gray-800/50 transition-colors">
-      {/* Time */}
-      <div className="flex items-center gap-2 shrink-0 w-36">
-        <span className="text-white font-mono text-sm font-semibold">
-          {formatTime(entry.start_time)}
-        </span>
-        {end && (
-          <span className="text-gray-600 text-xs">→ {formatTime(end)}</span>
-        )}
-      </div>
-
-      {/* Show info */}
-      <div className="flex-1 min-w-0">
-        <div className="font-semibold text-white text-sm truncate">
-          {entry.show_name}
         </div>
-        {showChannel && entry.channels?.name && (
-          <div className="text-gray-400 text-xs">{entry.channels.name}</div>
-        )}
-        {entry.notes && (
-          <div className="text-gray-500 text-xs mt-0.5 truncate">{entry.notes}</div>
-        )}
-      </div>
-
-      {/* Meta */}
-      <div className="flex items-center gap-2 shrink-0">
-        {entry.days_of_week && (
-          <span className="text-gray-400 text-xs bg-gray-800 border border-gray-700 rounded px-2 py-0.5">
-            {entry.days_of_week}
-          </span>
-        )}
-        {entry.duration_minutes && (
-          <span className="text-gray-500 text-xs">{entry.duration_minutes}m</span>
-        )}
-        <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${badge.cls}`}>
-          {badge.label}
-        </span>
-      </div>
+      )}
     </div>
   );
 }
