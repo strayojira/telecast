@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Telecast - Philippine TV Guide</title>
+  <style>
+    body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #0f172a; color: white; }
+    h1 { color: #f97316; }
+  </style>
+</head>
+<body>
+  <h1>👋 Welcome to Telecast</h1>
+  <p>Your smart, community-powered guide to free Philippine TV channels.</p>
+  <p>Currently live at: <strong>telecast.netlify.app</strong></p>
+  
+  <h2>🚧 Under Construction</h2>
+  <p>Next: "Now Airing" thumbnails + big SUBMIT FEEDBACK button</p>
+</body>
+</html>
