@@ -1,0 +1,6 @@
+# 1. Install Tailwind
+npm install -D tailwindcss postcss autoprefixer
+npx tailwindcss init -p
+
+# 2. Make sure src/main.jsx imports the CSS
+import './index.css'
