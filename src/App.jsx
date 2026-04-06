@@ -1,80 +1,120 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "./lib/supabase";
+import { fetchLiveStreamInfo } from "./lib/youtube";
 
-// ─── Thumbnail / card components ─────────────────────────────────
+const REFRESH_INTERVAL_MS = 7 * 60 * 1000; // 7 minutes
 
-function ChannelThumbnail({ channel, liveData }) {
-  const [imgError, setImgError] = useState(false);
-  const thumbnailUrl = liveData?.thumbnail_url && !imgError ? liveData.thumbnail_url : null;
+// ─── Channel card ─────────────────────────────────────────────────
+
+function ChannelCard({ channel }) {
+  const [liveInfo, setLiveInfo] = useState(null);
+  const [status, setStatus] = useState("loading"); // loading | live | offline | error
+
+  const load = useCallback(async () => {
+    if (!channel.youtube_channel_id) {
+      setStatus("offline");
+      return;
+    }
+    setStatus("loading");
+    const info = await fetchLiveStreamInfo(channel.youtube_channel_id);
+    if (info) {
+      setLiveInfo(info);
+      setStatus("live");
+    } else {
+      setStatus("offline");
+    }
+  }, [channel.youtube_channel_id]);
+
+  useEffect(() => {
+    load();
+    const interval = setInterval(load, REFRESH_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [load]);
 
   return (
-    <div className="relative w-full aspect-video bg-zinc-800 rounded-xl overflow-hidden">
-      {thumbnailUrl ? (
-        <img
-          src={thumbnailUrl}
-          alt={liveData?.title}
-          className="w-full h-full object-cover"
-          onError={() => setImgError(true)}
-        />
-      ) : (
-        <div
-          className="absolute inset-0 flex flex-col items-center justify-center gap-2"
-          style={{ background: `linear-gradient(135deg, ${channel.accent_color}22, #18181b)` }}
-        >
-          <span className="text-4xl opacity-40">📺</span>
-          <span className="text-zinc-600 text-xs">Loading stream...</span>
-        </div>
-      )}
+    <div className="bg-zinc-900 border border-zinc-800 hover:border-zinc-600 rounded-2xl overflow-hidden flex flex-col transition-all duration-200 hover:-translate-y-0.5">
+      {/* Thumbnail */}
+      <div className="relative w-full aspect-video bg-zinc-800">
+        {status === "live" && liveInfo?.thumbnailUrl ? (
+          <img
+            src={liveInfo.thumbnailUrl}
+            alt={liveInfo.title}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div
+            className="absolute inset-0 flex flex-col items-center justify-center gap-2"
+            style={{
+              background: `linear-gradient(135deg, ${channel.accent_color ?? "#c8000a"}18, #18181b)`,
+            }}
+          >
+            {status === "loading" && (
+              <div className="w-6 h-6 border-2 border-zinc-600 border-t-zinc-300 rounded-full animate-spin" />
+            )}
+            {status === "offline" && <span className="text-3xl opacity-30">📺</span>}
+            {status === "error" && <span className="text-2xl">⚠️</span>}
+          </div>
+        )}
 
-      <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
-        <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse inline-block" />
-        LIVE
+        {/* LIVE badge */}
+        {status === "live" && (
+          <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+            <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse inline-block" />
+            LIVE
+          </div>
+        )}
+
+        {/* Offline badge */}
+        {status === "offline" && (
+          <div className="absolute top-2 left-2 bg-zinc-700 text-zinc-400 text-[10px] font-bold px-2 py-0.5 rounded-full">
+            OFFLINE
+          </div>
+        )}
+
+        {/* Channel name overlay at bottom */}
+        <div className="absolute bottom-0 left-0 right-0 px-3 py-2 bg-gradient-to-t from-black/80 to-transparent">
+          <p className="text-white text-xs font-bold truncate">{channel.name}</p>
+        </div>
       </div>
 
-      {liveData?.viewer_count && (
-        <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded-full">
-          👁 {Number(liveData.viewer_count).toLocaleString()}
+      {/* Card body */}
+      <div className="p-4 flex flex-col gap-3 flex-1">
+        <div className="flex-1">
+          {status === "loading" && (
+            <div className="space-y-2">
+              <div className="h-3 bg-zinc-800 rounded animate-pulse w-3/4" />
+              <div className="h-3 bg-zinc-800 rounded animate-pulse w-1/2" />
+            </div>
+          )}
+          {status === "live" && (
+            <p className="text-zinc-300 text-sm leading-snug line-clamp-2">
+              {liveInfo?.title}
+            </p>
+          )}
+          {status === "offline" && (
+            <p className="text-zinc-600 text-sm italic">No live stream right now</p>
+          )}
+          {status === "error" && (
+            <p className="text-red-500 text-sm">Failed to load</p>
+          )}
         </div>
-      )}
-    </div>
-  );
-}
 
-function ChannelCard({ channel, liveData }) {
-  return (
-    <div className="group bg-zinc-900 border border-zinc-800 hover:border-zinc-600 rounded-2xl p-4 flex flex-col gap-3 transition-all duration-200 hover:-translate-y-0.5">
-      <ChannelThumbnail channel={channel} liveData={liveData} />
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="text-white font-bold text-sm truncate">{channel.name}</p>
-          <p className="text-zinc-500 text-xs mt-0.5 truncate">
-            {liveData?.title ?? "Schedule loading..."}
-          </p>
-        </div>
-        {channel.tags?.[0] && (
-          <span className="shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400">
-            {channel.tags[0]}
-          </span>
+        {/* Watch button */}
+        {status === "live" && liveInfo?.watchUrl ? (
+          <a
+            href={liveInfo.watchUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-2 bg-red-600 hover:bg-red-500 active:scale-[0.98] text-white text-xs font-bold py-2.5 rounded-xl transition-all"
+          >
+            ▶ Watch Live on YouTube
+          </a>
+        ) : (
+          <div className="flex items-center justify-center gap-2 bg-zinc-800 text-zinc-600 text-xs font-bold py-2.5 rounded-xl cursor-not-allowed">
+            {status === "loading" ? "Checking stream..." : "Not available"}
+          </div>
         )}
       </div>
-    </div>
-  );
-}
-
-// ─── Supabase status pill ─────────────────────────────────────────
-
-function DbStatus({ status }) {
-  const states = {
-    loading: { dot: "bg-yellow-500", text: "text-zinc-500", label: "Connecting to database..." },
-    connected: { dot: "bg-green-500", text: "text-green-400", label: "✅ Connected to Supabase" },
-    error: { dot: "bg-red-500", text: "text-red-400", label: "❌ Database connection failed" },
-  };
-  const s = states[status] ?? states.loading;
-
-  return (
-    <div className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full bg-zinc-800 border border-zinc-700 ${s.text}`}>
-      <span className={`w-1.5 h-1.5 rounded-full inline-block ${s.dot}`} />
-      {s.label}
     </div>
   );
 }
@@ -105,9 +145,11 @@ function FeedbackModal({ onClose }) {
             <span className="text-lg">📬</span>
             <h2 className="text-white font-bold text-lg tracking-tight">Send Feedback</h2>
           </div>
-          <button onClick={onClose}
+          <button
+            onClick={onClose}
             className="text-zinc-500 hover:text-white transition-colors text-2xl leading-none pb-0.5"
-            aria-label="Close">×</button>
+            aria-label="Close"
+          >×</button>
         </div>
 
         {submitted ? (
@@ -121,12 +163,13 @@ function FeedbackModal({ onClose }) {
             </button>
           </div>
         ) : (
-          <form name="telecast-feedback" method="POST"
+          <form
+            name="telecast-feedback" method="POST"
             data-netlify="true" netlify-honeypot="bot-field"
-            onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
+            onSubmit={handleSubmit} className="px-6 py-5 space-y-4"
+          >
             <input type="hidden" name="form-name" value="telecast-feedback" />
             <input type="hidden" name="bot-field" />
-
             <div>
               <label className="block text-zinc-400 text-xs font-semibold uppercase tracking-widest mb-1.5">
                 Name <span className="text-zinc-600 normal-case font-normal">(optional)</span>
@@ -134,7 +177,6 @@ function FeedbackModal({ onClose }) {
               <input type="text" name="name" placeholder="Juan dela Cruz"
                 className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2.5 text-white text-sm placeholder-zinc-600 focus:outline-none focus:border-red-500 transition-colors" />
             </div>
-
             <div>
               <label className="block text-zinc-400 text-xs font-semibold uppercase tracking-widest mb-1.5">
                 Message <span className="text-red-500">*</span>
@@ -143,7 +185,6 @@ function FeedbackModal({ onClose }) {
                 placeholder="Anong gusto mong sabihin? Schedule corrections, missing channels, bugs..."
                 className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2.5 text-white text-sm placeholder-zinc-600 focus:outline-none focus:border-red-500 transition-colors resize-none" />
             </div>
-
             <button type="submit"
               className="w-full bg-red-600 hover:bg-red-500 active:scale-[0.98] text-white font-bold py-3 rounded-xl transition-all text-sm tracking-wide">
               Submit Feedback
@@ -160,7 +201,6 @@ function FeedbackModal({ onClose }) {
 export default function App() {
   const [showModal, setShowModal] = useState(false);
   const [channels, setChannels] = useState([]);
-  const [liveDataMap, setLiveDataMap] = useState({});
   const [dbStatus, setDbStatus] = useState("loading");
 
   useEffect(() => {
@@ -176,27 +216,10 @@ export default function App() {
         setDbStatus("error");
         return;
       }
-
       setChannels(data);
       setDbStatus("connected");
     }
-
-    async function loadLiveData() {
-      const { data, error } = await supabase
-        .from("now_airing")
-        .select("*, channels(name)");
-
-      if (!error && data) {
-        const map = {};
-        data.forEach((row) => {
-          map[row.channel_id] = row;
-        });
-        setLiveDataMap(map);
-      }
-    }
-
     loadChannels();
-    loadLiveData();
   }, []);
 
   const today = new Date().toLocaleDateString("en-PH", {
@@ -220,8 +243,10 @@ export default function App() {
               <p className="text-zinc-500 text-[10px] uppercase tracking-widest">PH Free-to-Air Guide</p>
             </div>
           </div>
-          <button onClick={() => setShowModal(true)}
-            className="flex items-center gap-2 bg-red-600 hover:bg-red-500 active:scale-95 text-white text-sm font-bold px-4 py-2 rounded-xl transition-all">
+          <button
+            onClick={() => setShowModal(true)}
+            className="flex items-center gap-2 bg-red-600 hover:bg-red-500 active:scale-95 text-white text-sm font-bold px-4 py-2 rounded-xl transition-all"
+          >
             <span>📬</span>
             <span className="hidden sm:inline">Submit Feedback</span>
             <span className="sm:hidden">Feedback</span>
@@ -230,8 +255,6 @@ export default function App() {
       </header>
 
       <main className="max-w-5xl mx-auto px-4 py-8 space-y-12">
-
-        {/* Now Airing */}
         <section>
           <div className="flex flex-wrap items-end justify-between gap-3 mb-6">
             <div>
@@ -240,36 +263,48 @@ export default function App() {
                 Now <span className="text-red-500">Airing</span>
               </h2>
               <p className="text-zinc-500 text-sm mt-1">
-                Official livestreams from PH free-to-air channels
+                Live streams from official PH free-to-air channels
               </p>
             </div>
-            <DbStatus status={dbStatus} />
+
+            {/* DB status pill */}
+            <div className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full bg-zinc-800 border border-zinc-700 ${
+              dbStatus === "connected" ? "text-green-400" :
+              dbStatus === "error" ? "text-red-400" : "text-zinc-500"
+            }`}>
+              <span className={`w-1.5 h-1.5 rounded-full inline-block ${
+                dbStatus === "connected" ? "bg-green-500" :
+                dbStatus === "error" ? "bg-red-500" : "bg-yellow-500"
+              }`} />
+              {dbStatus === "connected" ? "Supabase connected" :
+               dbStatus === "error" ? "DB error" : "Connecting..."}
+            </div>
           </div>
 
-          {dbStatus === "loading" && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {[...Array(6)].map((_, i) => (
-                <div key={i} className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 space-y-3 animate-pulse">
-                  <div className="w-full aspect-video bg-zinc-800 rounded-xl" />
-                  <div className="h-3 bg-zinc-800 rounded w-2/3" />
-                  <div className="h-3 bg-zinc-800 rounded w-1/2" />
-                </div>
-              ))}
-            </div>
-          )}
-
-          {dbStatus === "error" && (
+          {/* Channel grid */}
+          {dbStatus === "error" ? (
             <div className="border border-dashed border-red-900 rounded-2xl p-8 text-center">
               <p className="text-2xl mb-2">⚠️</p>
               <p className="text-red-400 font-semibold text-sm">Could not load channels</p>
-              <p className="text-zinc-600 text-xs mt-1">Check your Supabase environment variables on Vercel.</p>
+              <p className="text-zinc-600 text-xs mt-1">Check Supabase env vars on Vercel.</p>
             </div>
-          )}
-
-          {dbStatus === "connected" && (
+          ) : dbStatus === "loading" ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden animate-pulse">
+                  <div className="w-full aspect-video bg-zinc-800" />
+                  <div className="p-4 space-y-2">
+                    <div className="h-3 bg-zinc-800 rounded w-3/4" />
+                    <div className="h-3 bg-zinc-800 rounded w-1/2" />
+                    <div className="h-8 bg-zinc-800 rounded-xl mt-3" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {channels.map((ch) => (
-                <ChannelCard key={ch.id} channel={ch} liveData={liveDataMap[ch.id] ?? null} />
+                <ChannelCard key={ch.id} channel={ch} />
               ))}
             </div>
           )}
@@ -281,7 +316,7 @@ export default function App() {
             <p className="text-3xl mb-3">📅</p>
             <h3 className="text-white font-bold text-lg mb-2">Full EPG Schedule — Coming Soon</h3>
             <p className="text-zinc-500 text-sm leading-relaxed">
-              A full week-ahead program guide for all FTA channels. Sourced from official network posts and community submissions.
+              Week-ahead program guide for all FTA channels, sourced from official network posts and community submissions.
             </p>
             <div className="mt-6 flex flex-wrap gap-2 justify-center">
               {["GMA", "GTV", "Kapamilya", "TV5", "PTV", "UNTV"].map((name) => (
@@ -301,8 +336,10 @@ export default function App() {
               Submit corrections, pre-emptions, or missing shows. You're helping build the guide.
             </p>
           </div>
-          <button onClick={() => setShowModal(true)}
-            className="shrink-0 flex items-center gap-2 bg-red-600 hover:bg-red-500 active:scale-95 text-white font-bold px-6 py-3 rounded-xl transition-all text-sm">
+          <button
+            onClick={() => setShowModal(true)}
+            className="shrink-0 flex items-center gap-2 bg-red-600 hover:bg-red-500 active:scale-95 text-white font-bold px-6 py-3 rounded-xl transition-all text-sm"
+          >
             📬 SUBMIT FEEDBACK
           </button>
         </section>
