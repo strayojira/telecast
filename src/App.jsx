@@ -603,11 +603,12 @@ export default function App() {
       {/* Footer */}
       <footer className="border-t border-zinc-800 py-4 mt-auto">
         <div className="max-w-6xl mx-auto px-4 flex flex-wrap items-center justify-between gap-2 text-zinc-600 text-xs">
-          <span>📺 <span className="font-bold text-zinc-500">Telecast</span> </span>
-          <span>Made in 🇵🇭</span>
-        </div>
+        2026 🇵🇭
+      </div>
       </footer>
 
+      
+      
       {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
       {showSchedule && <SubmitScheduleModal channels={channels} onClose={() => setShowSchedule(false)} />}
 
