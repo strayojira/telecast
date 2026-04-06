@@ -602,7 +602,7 @@ export default function App() {
 
       {/* Footer */}
       <footer className="border-t border-zinc-800 py-4 mt-auto">
-        <div className="bottom-4 text-[15px]">
+        <div className="bottom-4 right-4 text-[15px]">
         2026 🇵🇭
       </div>
       </footer>
